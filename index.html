@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dere Book</title>
+  <style>
+    :root {
+      --bg: #120f14;
+      --paper: #f6efe6;
+      --ink: #201a1d;
+      --shadow: rgba(0, 0, 0, 0.28);
+      --page-radius: 28px;
+      --turn-duration: 620ms;
+      --edge-preview: 56px;
+      --warning-bg: rgba(8, 8, 12, 0.72);
+      --warning-border: rgba(255,255,255,0.16);
+      --mobile-breakpoint: 860px;
+      --book-width: min(1120px, 92vw);
+      --book-height: min(720px, 86vh);
+      --grain-opacity: 0.08;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top, #2b2030 0%, #18131c 40%, #09080c 100%);
+      color: #fff;
+      font-family: "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.22;
+      background:
+        linear-gradient(transparent 0 96%, rgba(255,255,255,0.04) 100%),
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06), transparent 28%),
+        radial-gradient(circle at 75% 30%, rgba(255,255,255,0.04), transparent 24%);
+      mix-blend-mode: screen;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .book-shell {
+      position: relative;
+      width: var(--book-width);
+      height: calc(var(--book-height) + 96px);
+      perspective: 1600px;
+    }
+
+    .book-shadow {
+      position: absolute;
+      inset: auto 5% -28px 5%;
+      height: 42px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.42);
+      filter: blur(18px);
+      z-index: 0;
+    }
+
+    .book {
+      position: relative;
+      width: 100%;
+      height: var(--book-height);
+      z-index: 1;
+      display: flex;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding-right: 0;
+      transform-style: preserve-3d;
+    }
+
+    .preview-page {
+      display: none;
+    }
+
+    .preview-page .preview-image {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: right center;
+      filter: saturate(0.9) blur(0.2px);
+      transform: scale(1.25);
+      opacity: 0.75;
+      /* show only the outer edge of the next page */
+      clip-path: inset(0 0 0 55%);
+    }
+
+    .preview-page::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 35%, rgba(0,0,0,0.16));
+    }
+
+    .page-stack {
+      position: relative;
+      flex: 1;
+      height: 100%;
+      transform-style: preserve-3d;
+    }
+
+    .page {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      border-radius: var(--page-radius);
+      overflow: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: 0 24px 40px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.2);
+      transform-origin: left center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(5%) scale(0.985);
+      transition:
+        transform var(--turn-duration) cubic-bezier(.2,.8,.18,1),
+        opacity var(--turn-duration) ease,
+        filter var(--turn-duration) ease;
+      filter: saturate(0.95);
+    }
+
+    .page.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0) scale(1);
+      z-index: 5;
+    }
+
+    .page.leaving {
+      opacity: 0;
+      transform: translateX(-7%) scale(0.98);
+      z-index: 4;
+    }
+
+    .page.enter-from-right {
+      animation: slideInHorizontal var(--turn-duration) cubic-bezier(.2,.8,.18,1);
+    }
+
+    .page.enter-from-left {
+      animation: slideBackHorizontal var(--turn-duration) cubic-bezier(.2,.8,.18,1);
+    }
+
+    @keyframes slideInHorizontal {
+      from {
+        opacity: 0;
+        transform: translateX(12%) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    @keyframes slideBackHorizontal {
+      from {
+        opacity: 0;
+        transform: translateX(-12%) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    .page-media,
+    .page-text {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .page-media {
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .page-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scale(1.02);
+    }
+
+    .page-media::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 55%, rgba(0,0,0,0.18));
+      pointer-events: none;
+    }
+
+    .page-text {
+      padding: clamp(28px, 4vw, 44px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 18px;
+    }
+
+    .page-count {
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      opacity: 0.54;
+    }
+
+    .type-badge {
+      align-self: flex-start;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      font-weight: 800;
+      border: 1px solid currentColor;
+      opacity: 0.84;
+    }
+
+    .dialogue {
+      font-size: clamp(28px, 3.2vw, 48px);
+      line-height: 1.24;
+      font-weight: 900;
+      word-break: keep-all;
+      letter-spacing: -0.03em;
+      margin: 0;
+    }
+
+    .sub {
+      margin: 0;
+      font-size: clamp(14px, 1.2vw, 17px);
+      line-height: 1.7;
+      opacity: 0.74;
+      word-break: keep-all;
+    }
+
+    .nav {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 20;
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      border-radius: 999px;
+      padding: 14px 22px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.12);
+      transition: transform 180ms ease, background 180ms ease, opacity 180ms ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.12); }
+    .btn:active { transform: translateY(1px) scale(0.99); }
+
+    .indicator {
+      min-width: 86px;
+      text-align: center;
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      opacity: 0.74;
+    }
+
+    .warning-toast {
+      position: absolute;
+      top: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 30;
+      transition: opacity 220ms ease, transform 220ms ease;
+      backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+
+    .warning-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .book.shake {
+      animation: shakeBook 480ms ease;
+    }
+
+    @keyframes shakeBook {
+      0%, 100% { transform: translateX(0); }
+      12% { transform: translateX(-8px) rotate(-0.4deg); }
+      24% { transform: translateX(8px) rotate(0.4deg); }
+      36% { transform: translateX(-7px) rotate(-0.35deg); }
+      48% { transform: translateX(7px) rotate(0.35deg); }
+      60% { transform: translateX(-4px); }
+      72% { transform: translateX(4px); }
+      84% { transform: translateX(-2px); }
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: var(--grain-opacity);
+      background-image:
+        radial-gradient(circle at 30% 20%, rgba(255,255,255,.9) 0 0.6px, transparent 0.8px),
+        radial-gradient(circle at 70% 80%, rgba(0,0,0,.7) 0 0.8px, transparent 1px),
+        radial-gradient(circle at 50% 50%, rgba(0,0,0,.3) 0 0.7px, transparent 0.9px);
+      background-size: 22px 22px, 28px 28px, 18px 18px;
+      mix-blend-mode: multiply;
+    }
+
+    .page[data-type="title"] {
+      grid-template-columns: 1fr;
+      background:
+        radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 28%),
+        linear-gradient(135deg, #15131f, #21162a 46%, #120f18 100%);
+      color: #f8f2ff;
+    }
+    .page[data-type="title"] .page-media {
+      display: none;
+    }
+    .page[data-type="title"] .page-text {
+      align-items: center;
+      text-align: center;
+      gap: 26px;
+      padding: clamp(34px, 6vw, 72px);
+    }
+    .page[data-type="title"] .type-badge {
+      color: #d8c1ff;
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(216,193,255,0.5);
+      letter-spacing: 0.28em;
+    }
+    .page[data-type="title"] .dialogue {
+      font-family: "Noto Serif KR", serif;
+      font-size: clamp(34px, 4.2vw, 68px);
+      line-height: 1.38;
+      white-space: pre-line;
+      text-shadow: 0 0 24px rgba(216, 193, 255, 0.16);
+      max-width: 10.5em;
+    }
+    .page[data-type="title"] .sub {
+      font-size: clamp(16px, 1.35vw, 20px);
+      opacity: 0.8;
+      max-width: 36em;
+    }
+    .page[data-type="title"]::after {
+      content: "CURTAIN RISE";
+      position: absolute;
+      left: 50%;
+      bottom: 34px;
+      transform: translateX(-50%);
+      font-size: 11px;
+      letter-spacing: 0.42em;
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .page[data-type="mega"] {
+      background: linear-gradient(135deg, #fff5f8, #ffe3ea 45%, #ffd0dd);
+      color: #7c2144;
+    }
+    .page[data-type="mega"] .type-badge { color: #d65081; background: rgba(255,255,255,0.42); }
+    .page[data-type="mega"] .dialogue { text-shadow: 0 0 18px rgba(255, 151, 193, 0.45); }
+    .page[data-type="mega"] .page-media::before {
+      content: "♡ ♡ ♡";
+      position: absolute;
+      inset: 24px auto auto 24px;
+      letter-spacing: 12px;
+      color: rgba(255,255,255,0.72);
+      font-size: 26px;
+      z-index: 2;
+      animation: floatHearts 3.2s ease-in-out infinite;
+    }
+
+    .page[data-type="tsun"] {
+      background: linear-gradient(135deg, #fff5ea, #ffe0c7 50%, #ffd0b1);
+      color: #7c3417;
+    }
+    .page[data-type="tsun"] .type-badge { color: #db6b32; background: rgba(255,255,255,0.46); }
+    .page[data-type="tsun"] .dialogue {
+      transform: rotate(-1deg);
+      text-shadow: 3px 3px 0 rgba(255,255,255,0.55);
+    }
+    .page[data-type="tsun"] .page-text::after {
+      content: "흥";
+      position: absolute;
+      right: 34px;
+      bottom: 34px;
+      font-weight: 900;
+      font-size: clamp(40px, 7vw, 80px);
+      color: rgba(255,255,255,0.28);
+      pointer-events: none;
+      transform: rotate(-8deg);
+    }
+
+    .page[data-type="yok"] {
+      background: linear-gradient(135deg, #1d2026, #272d36 48%, #191c21);
+      color: #d7f8d0;
+    }
+    .page[data-type="yok"] .type-badge { color: #8df08a; background: rgba(255,255,255,0.04); }
+    .page[data-type="yok"] .dialogue {
+      font-family: "IBM Plex Sans KR", "Noto Sans KR", sans-serif;
+      text-decoration: line-through;
+      text-decoration-thickness: 4px;
+      text-decoration-color: rgba(255, 93, 93, 0.78);
+      text-shadow: 0 0 18px rgba(98, 255, 130, 0.08);
+    }
+    .page[data-type="yok"] .page-media::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background:
+        repeating-linear-gradient(0deg, transparent 0 14px, rgba(255,255,255,0.03) 14px 15px),
+        linear-gradient(120deg, transparent 0 38%, rgba(255, 80, 80, 0.08) 42%, transparent 46%);
+    }
+
+    .page[data-type="cool"] {
+      background: linear-gradient(135deg, #eef6ff, #d8ebff 46%, #c3deff);
+      color: #215179;
+    }
+    .page[data-type="cool"] .type-badge { color: #4d84b7; background: rgba(255,255,255,0.42); }
+    .page[data-type="cool"] .dialogue {
+      font-family: "Noto Serif KR", serif;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .page[data-type="cool"] .page-media::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(circle at 20% 18%, rgba(255,255,255,0.58), transparent 18%),
+        radial-gradient(circle at 78% 24%, rgba(255,255,255,0.42), transparent 16%),
+        linear-gradient(180deg, rgba(255,255,255,0.12), transparent 40%);
+    }
+
+    .page[data-type="yan"] {
+      background: radial-gradient(circle at 70% 20%, #4e0e1f, #1b0810 50%, #070406 100%);
+      color: #ffe8ef;
+    }
+    .page[data-type="yan"] .type-badge { color: #ffb6cb; background: rgba(255,255,255,0.06); }
+    .page[data-type="yan"] .dialogue {
+      font-family: "Noto Serif KR", serif;
+      text-shadow: 0 0 16px rgba(255, 83, 136, 0.28);
+    }
+    .page[data-type="yan"] .page-media::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(circle at 50% 50%, transparent 56%, rgba(118, 0, 31, 0.18) 100%),
+        linear-gradient(180deg, transparent, rgba(255,0,76,0.12));
+    }
+
+    .page[data-type="???"] {
+      background: #05070b;
+      color: #f2f6ff;
+      overflow: hidden;
+    }
+    .page[data-type="???"] .page-count,
+    .page[data-type="???"] .type-badge,
+    .page[data-type="???"] .sub,
+    .page[data-type="???"] .dialogue {
+      position: relative;
+      z-index: 3;
+    }
+    .page[data-type="???"] .type-badge {
+      color: #97b7ff;
+      background: rgba(255,255,255,0.06);
+    }
+    .page[data-type="???"] .dialogue {
+      font-family: "Noto Sans KR", sans-serif;
+      animation: glitchText 820ms steps(2, end) infinite;
+      text-shadow:
+        -2px 0 rgba(255, 0, 76, 0.8),
+        2px 0 rgba(0, 220, 255, 0.75);
+    }
+    .page[data-type="???"] .page-media::before,
+    .page[data-type="???"] .page-media::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .page[data-type="???"] .page-media::before {
+      background:
+        repeating-linear-gradient(180deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 5px),
+        linear-gradient(90deg, rgba(255,0,102,0.08), transparent 28%, transparent 72%, rgba(0,209,255,0.08));
+      mix-blend-mode: screen;
+      animation: scanlines 180ms linear infinite;
+    }
+    .page[data-type="???"] .page-media::after {
+      background:
+        linear-gradient(0deg, transparent 0 20%, rgba(255,255,255,0.08) 25%, transparent 27% 100%);
+      animation: glitchBars 2.2s infinite steps(2, end);
+    }
+    .page[data-type="???"]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06), transparent 14%),
+        radial-gradient(circle at 75% 68%, rgba(255,255,255,0.04), transparent 10%),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 4px);
+      opacity: 0.7;
+      animation: noiseFlicker 140ms steps(2, end) infinite;
+    }
+
+    @keyframes floatHearts {
+      0%, 100% { transform: translateY(0); opacity: 0.7; }
+      50% { transform: translateY(-8px); opacity: 1; }
+    }
+
+    @keyframes glitchText {
+      0%, 100% { transform: translate(0); filter: blur(0); }
+      20% { transform: translate(-1px, 1px); }
+      40% { transform: translate(2px, -1px); }
+      60% { transform: translate(-2px, 0); filter: blur(0.4px); }
+      80% { transform: translate(1px, 1px); }
+    }
+
+    @keyframes glitchBars {
+      0%, 100% { clip-path: inset(0 0 0 0); transform: translateX(0); }
+      20% { clip-path: inset(8% 0 68% 0); transform: translateX(-10px); }
+      45% { clip-path: inset(48% 0 28% 0); transform: translateX(12px); }
+      70% { clip-path: inset(70% 0 8% 0); transform: translateX(-6px); }
+    }
+
+    @keyframes noiseFlicker {
+      0%, 100% { opacity: 0.48; }
+      50% { opacity: 0.75; }
+    }
+
+    @keyframes scanlines {
+      from { transform: translateY(0); }
+      to { transform: translateY(5px); }
+    }
+
+    .ghost-hint {
+      position: absolute;
+      right: 20px;
+      bottom: 18px;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      opacity: 0.36;
+      z-index: 3;
+    }
+
+    @media (max-width: 860px) {
+      :root {
+        --book-width: min(94vw, 680px);
+        --book-height: min(84dvh, 900px);
+        --edge-preview: 44px;
+      }
+
+      .stage { padding: 14px; }
+
+      .book {
+        padding-right: 0;
+        padding-bottom: var(--edge-preview);
+      }
+
+      .preview-page {
+        top: auto;
+        left: 16px;
+        right: 16px;
+        bottom: 84px;
+        width: auto;
+        height: 72px;
+        border-radius: 0 0 var(--page-radius) var(--page-radius);
+      }
+
+      .page {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1.06fr 0.94fr;
+      }
+
+      .page.enter-from-right {
+        animation: slideInVertical var(--turn-duration) cubic-bezier(.2,.8,.18,1);
+      }
+
+      .page.enter-from-left {
+        animation: slideBackVertical var(--turn-duration) cubic-bezier(.2,.8,.18,1);
+      }
+
+      .page.leaving {
+        transform: translateY(-5%) scale(0.985);
+      }
+
+      @keyframes slideInVertical {
+        from {
+          opacity: 0;
+          transform: translateY(10%) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes slideBackVertical {
+        from {
+          opacity: 0;
+          transform: translateY(-10%) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .page-media::after {
+        background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.18));
+      }
+
+      .page-text {
+        padding: 24px 22px 30px;
+        gap: 14px;
+      }
+
+      .dialogue {
+        font-size: clamp(24px, 7vw, 38px);
+      }
+
+      .sub {
+        font-size: 14px;
+      }
+
+      .page-count {
+        top: 18px;
+        right: 18px;
+      }
+
+      .nav {
+        bottom: 10px;
+      }
+
+      .btn {
+        padding: 13px 18px;
+        font-size: 13px;
+      }
+
+      .indicator {
+        min-width: 74px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="book-shell">
+      <div class="warning-toast" id="warningToast"></div>
+      <div class="book-shadow"></div>
+
+      <div class="book" id="book">
+        <div class="page-stack" id="pageStack"></div>
+      </div>
+
+      <div class="nav">
+        <button class="btn" id="prevBtn" type="button">이전</button>
+        <div class="indicator" id="indicator">01 / 05</div>
+        <button class="btn" id="nextBtn" type="button">다음</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const pages = [
+      {
+        id: 0,
+        type: 'title',
+        title: 'PROLOGUE',
+        image: '',
+        dialogue: '선배가 원하는 역할이라면, 제가 완벽하게 연기해 볼게요!',
+        sub: '배우 꿈나무 후배 ‘한여름’의 무대가 시작됩니다.'
+      },
+      {
+        id: 1,
+        type: 'mega',
+        title: '메가데레',
+        image: 'bg1_1.webp',
+        dialogue: '선배, 선배, 선배!<br>저 진짜 선배가 너무너무 좋아요♡',
+        sub: '누구보다도 투명하게, 무엇보다도 진실하게'
+      },
+      {
+        id: 2,
+        type: 'tsun',
+        title: '츤데레',
+        image: 'bg1_2.webp',
+        dialogue: '흥! 딱히 선배 보려고 온 건 아니거든요!<br>그냥, 우연이에요...!',
+        sub: '뾰족한 가시를 내세우면서도, 언제나 가장 가까이'
+      },
+      {
+        id: 3,
+        type: 'yok',
+        image: 'bg1_3.webp',
+        title: '욕데레',
+        dialogue: '아씨, 눈깔 안 치워요?<br>...밥이나 똑바로 쳐먹으세요, 병신.',
+        sub: '말에 한가득 날을 세울지라도 행동은 누구보다 부드러운'
+      },
+      {
+        id: 4,
+        type: 'cool',
+        title: '쿨데레',
+        image: 'bg1_4.webp',
+        dialogue: '... 돌려말하지 않을게요. 당신을 좋아합니다.',
+        sub: '차갑고 객관적으로 바라보기에, 분명히 보이는 애정'
+      },
+      {
+        id: 5,
+        type: 'yan',
+        title: '얀데레',
+        image: 'bg1_5.webp',
+        dialogue: '선배의 시선이 닿는 다른 년들은...<br>전부 찢어 죽여버릴 거에요.',
+        sub: '집착과 질투는 맹목과 열정의 또다른 표현이기에'
+      },
+      {
+        id: 6,
+        type: '???',
+        title: '???',
+        image: 'bg2.webp',
+        dialogue: '...보지 말아 주세요, 선배...',
+        sub: '결국... 가면 뒤의 나는,<br>너무나도 추하고 보잘것없기에.'
+      }
+    ];
+
+    const warningLines = [
+      '마지막 페이지입니다',
+      '마지막 페이지에요',
+      '넘기지 말아주세요',
+      '선배, 제발...',
+      '...'
+    ];
+
+    const pageStack = document.getElementById('pageStack');
+        const warningToast = document.getElementById('warningToast');
+    const indicator = document.getElementById('indicator');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const book = document.getElementById('book');
+
+    let currentIndex = 0;
+    let blockedAttempts = 0;
+    let isAnimating = false;
+    let toastTimer = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    function createPage(page) {
+      const el = document.createElement('article');
+      el.className = 'page';
+      el.dataset.type = page.type;
+      el.dataset.id = page.id;
+      const visiblePageNumber = page.id === 0 ? 'TITLE' : String(page.id).padStart(2, '0');
+      const pageCountMarkup = page.type === '???'
+        ? ''
+        : `<div class="page-count">PAGE ${visiblePageNumber}</div>`;
+      el.innerHTML = `
+        <div class="page-media">
+          <img src="${page.image}" alt="${page.title}" loading="eager" />
+        </div>
+        <div class="page-text">
+          ${pageCountMarkup}
+          <div class="type-badge">${page.title}</div>
+          <h1 class="dialogue">${page.dialogue}</h1>
+          <p class="sub">${page.sub}</p>
+          ${page.type === '???' ? '<div class="ghost-hint">SIGNAL LOST</div>' : ''}
+        </div>
+      `;
+      return el;
+    }
+
+    const pageElements = pages.map(createPage);
+    pageElements.forEach((pageEl) => pageStack.appendChild(pageEl));
+
+    function updatePreview() {
+      return;
+    }
+
+    function updateIndicator() {
+      if (currentIndex === 0) {
+        indicator.textContent = 'TITLE';
+      } else if (currentIndex <= 5) {
+        indicator.textContent = `${String(currentIndex).padStart(2, '0')} / 05`;
+      } else {
+        indicator.textContent = '?? / ??';
+      }
+    }
+
+    function showWarning(message) {
+      warningToast.textContent = message;
+      warningToast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        warningToast.classList.remove('show');
+      }, 1500);
+    }
+
+    function shakeBook() {
+      book.classList.remove('shake');
+      void book.offsetWidth;
+      book.classList.add('shake');
+    }
+
+    function setActivePage(index, direction = 1, immediate = false) {
+      const prev = pageElements.find((el) => el.classList.contains('active'));
+      const next = pageElements[index];
+      if (!next) return;
+
+      pageElements.forEach((el) => {
+        el.classList.remove('enter-from-right', 'enter-from-left', 'leaving');
+      });
+
+      if (prev && prev !== next) {
+        prev.classList.add('leaving');
+        prev.classList.remove('active');
+      }
+
+      next.style.animation = 'none';
+      void next.offsetWidth;
+      if (!immediate) {
+        next.classList.add(direction >= 0 ? 'enter-from-right' : 'enter-from-left');
+      }
+      next.classList.add('active');
+
+      currentIndex = index;
+      updatePreview();
+      updateIndicator();
+      prevBtn.style.opacity = currentIndex === 0 ? '0.45' : '1';
+    }
+
+    function goTo(index, direction = 1) {
+      if (isAnimating) return;
+      if (index < 0 || index >= pages.length) return;
+
+      isAnimating = true;
+      blockedAttempts = 0;
+      setActivePage(index, direction);
+      window.setTimeout(() => {
+        isAnimating = false;
+      }, 660);
+    }
+
+    function nextPage() {
+      if (isAnimating) return;
+
+      if (currentIndex < 5) {
+        goTo(currentIndex + 1, 1);
+        return;
+      }
+
+      if (currentIndex === 5) {
+        blockedAttempts += 1;
+        shakeBook();
+        showWarning(warningLines[Math.min(blockedAttempts - 1, warningLines.length - 1)]);
+
+        if (blockedAttempts >= 5) {
+          isAnimating = true;
+          setTimeout(() => {
+            setActivePage(6, 1);
+            isAnimating = false;
+          }, 180);
+        }
+        return;
+      }
+    }
+
+    function prevPage() {
+      if (isAnimating) return;
+      if (currentIndex === 0) return;
+      if (currentIndex === 6) {
+        goTo(5, -1);
+        return;
+      }
+      goTo(currentIndex - 1, -1);
+    }
+
+    nextBtn.addEventListener('click', nextPage);
+    prevBtn.addEventListener('click', prevPage);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') nextPage();
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') prevPage();
+      if (e.key === 'ArrowDown' && window.matchMedia('(max-width: 860px)').matches) nextPage();
+      if (e.key === 'ArrowUp' && window.matchMedia('(max-width: 860px)').matches) prevPage();
+    });
+
+    window.addEventListener('touchstart', (e) => {
+      const touch = e.changedTouches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartX;
+      const dy = touch.clientY - touchStartY;
+      const isMobileLayout = window.matchMedia('(max-width: 860px)').matches;
+
+      if (isMobileLayout) {
+        if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx)) {
+          if (dy < 0) nextPage();
+          else prevPage();
+        }
+      } else {
+        if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+          if (dx < 0) nextPage();
+          else prevPage();
+        }
+      }
+    }, { passive: true });
+
+    setActivePage(0, 1, true);
+  </script>
+</body>
+</html>
